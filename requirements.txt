@@ -1,7 +1,9 @@
 Flask
 gunicorn
+flask-cors
 requests
 scikit-learn
 joblib
 numpy
 pandas
+textblob
