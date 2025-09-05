@@ -1,18 +1,14 @@
-import random
 import re
 import sqlite3
 import requests
 import os
-import socket
 import joblib
 from datetime import datetime
 from urllib.parse import urlparse
 from email import policy
 from email.parser import BytesParser
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.graphics.shapes import Drawing
@@ -20,14 +16,12 @@ from reportlab.graphics.charts.barcharts import VerticalBarChart
 from reportlab.graphics import renderPDF
 from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle
-from reportlab.lib import colors
 import io
-from flask import send_file
 
 app = Flask(__name__)
 CORS(app)
 
-# Database setup
+# -------------------- Config / Globals --------------------
 DB_NAME = "phished_urls.db"
 phished_urls_set = set()
 clicked_emails = []
@@ -35,7 +29,9 @@ UPLOAD_FOLDER = "./uploads"
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Spam detection ML model
+HTTP_TIMEOUT = 10  # seconds for outbound requests
+
+# -------------------- ML Model Load --------------------
 try:
     spam_model = joblib.load('./ml_models/spam_detection_model.pkl')
     vectorizer = joblib.load('./ml_models/tfidf_vectorizer.pkl')
@@ -45,6 +41,7 @@ except Exception as e:
     spam_model = None
     vectorizer = None
 
+# -------------------- DB Init --------------------
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -69,10 +66,11 @@ def init_db():
     conn.close()
     print("Database initialized.")
 
+# -------------------- Data Sources --------------------
 def fetch_openphish_feed():
     api_url = "https://openphish.com/feed.txt"
     try:
-        response = requests.get(api_url)
+        response = requests.get(api_url, timeout=HTTP_TIMEOUT)
         if response.status_code == 200:
             return response.text.splitlines()
     except Exception as e:
@@ -101,28 +99,26 @@ def store_phishing_urls(phishing_urls):
     conn.close()
     return count
 
+# -------------------- External Checks --------------------
 def check_with_virustotal(url):
-    try:
-        api_key = "118ae06a71ab66361e57900a6e9859911458c4b4effb8a6f4dabd969a386bd49"
-        headers = {"x-apikey": api_key}
-        response = requests.get(f"https://www.virustotal.com/api/v3/urls", 
-                                headers=headers,
-                                params={"url": url})
-        
-        # If not already analyzed, we must submit the URL for scanning
-        if response.status_code == 404:
-            submission = requests.post("https://www.virustotal.com/api/v3/urls", 
-                                       headers=headers,
-                                       data={"url": url})
-            url_id = submission.json()["data"]["id"]
-        else:
-            url_id = response.json()["data"]["id"]
+    # NOTE: do not hardcode API keys in code in production; use environment variables.
+    api_key = os.getenv("VT_API_KEY", "")
+    if not api_key:
+        return "Unknown"
 
-        # Retrieve analysis report
+    try:
+        headers = {"x-apikey": api_key}
+        # Try to retrieve analysis id for this URL
+        r = requests.post("https://www.virustotal.com/api/v3/urls",
+                          headers=headers, data={"url": url}, timeout=HTTP_TIMEOUT)
+        r.raise_for_status()
+        url_id = r.json()["data"]["id"]
+
+        # Fetch analysis summary
         analysis_url = f"https://www.virustotal.com/api/v3/analyses/{url_id}"
-        result = requests.get(analysis_url, headers=headers)
+        result = requests.get(analysis_url, headers=headers, timeout=HTTP_TIMEOUT)
         if result.status_code == 200:
-            stats = result.json()["data"]["attributes"]["stats"]
+            stats = result.json().get("data", {}).get("attributes", {}).get("stats", {})
             if stats.get("malicious", 0) > 0 or stats.get("suspicious", 0) > 0:
                 return "Phishing"
         return "Safe"
@@ -130,12 +126,10 @@ def check_with_virustotal(url):
         print(f"VirusTotal error: {e}")
         return "Unknown"
 
-
+# -------------------- URL Heuristics --------------------
 def is_phishing_url(url):
     url = url.lower().strip()
-    
-    # 🚨 Rule: Immediately flag if URL uses plain HTTP
-    if url.startswith("http:"):
+    if url.startswith("http:"):  # plain HTTP
         return "Phishing"
 
     parsed_url = urlparse(url)
@@ -148,7 +142,7 @@ def is_phishing_url(url):
 
     verdicts = []
 
-    # Memory check
+    # In-memory seen list
     if any(phished_url in url for phished_url in phished_urls_set):
         verdicts.append("Phishing")
 
@@ -164,36 +158,25 @@ def is_phishing_url(url):
         print(f"DB query error: {e}")
     conn.close()
 
-    # Keyword check
+    # Keyword / shape checks
     if any(keyword in url for keyword in suspicious_keywords):
         verdicts.append("Phishing")
 
-    # IP and length check
-    if re.match(r'\d+\.\d+\.\d+\.\d+', domain):
+    if re.match(r'^\d+\.\d+\.\d+\.\d+$', domain):  # bare IP
         verdicts.append("Phishing")
     if len(domain) < 5 or len(domain) > 50:
         verdicts.append("Phishing")
     if domain.count('.') > 2:
         verdicts.append("Phishing")
 
-    # VirusTotal check
+    # VirusTotal
     vt_result = check_with_virustotal(url)
     if vt_result == "Phishing":
         verdicts.append("Phishing")
 
     return "Phishing" if "Phishing" in verdicts else "Safe"
 
-
-
-def analyze_email_spam_local(email_content):
-    try:
-        email_features = vectorizer.transform([email_content]).toarray()
-        prediction = spam_model.predict(email_features)
-        confidence = spam_probabilities[predicted_label] * 10
-        return "SPAM" if prediction[0] == 1 else "NOT SPAM"
-    except Exception as e:
-        return f"Error: {e}"
-
+# -------------------- Email Helpers --------------------
 def extract_ip_from_email(file_path):
     try:
         with open(file_path, "rb") as file:
@@ -203,21 +186,20 @@ def extract_ip_from_email(file_path):
         ips = ip_pattern.findall(headers)
         return list(set(ips))
     except Exception as e:
+        print(f"extract_ip_from_email error: {e}")
         return []
 
 def get_ip_geolocation(ip):
     try:
         url = f"http://ip-api.com/json/{ip}"
-        response = requests.get(url)
+        response = requests.get(url, timeout=HTTP_TIMEOUT)
         if response.status_code == 200:
             data = response.json()
             lat = data.get('lat')
             lon = data.get('lon')
-
             google_maps_link = None
             if lat is not None and lon is not None:
                 google_maps_link = f"https://www.google.com/maps?q={lat},{lon}"
-
             return {
                 "ip": ip,
                 "country": data.get('country', 'Unknown'),
@@ -239,17 +221,10 @@ def get_ip_geolocation(ip):
         "google_maps_link": None
     }
 
-
 def generate_fake_url():
     return "/fake_login"
 
-import io
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.graphics.shapes import Drawing
-from reportlab.graphics.charts.barcharts import VerticalBarChart
-from reportlab.graphics import renderPDF
-
+# -------------------- PDF Report --------------------
 def generate_pdf_report(results, insights):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
@@ -261,19 +236,18 @@ def generate_pdf_report(results, insights):
     c.drawString(180, y, "Spam Detection Report")
     y -= 40
 
-    ## ------------------------- ##
-    ## File Analysis Table
-    ## ------------------------- ##
+    # File Analysis Table
     c.setFont("Helvetica-Bold", 14)
     c.drawString(50, y, "■ File Analysis Results:")
     y -= 20
 
     data = [["Filename", "Result", "Accuracy (%)"]]
     for result in results:
-        short_filename = result['filename'][:15] + '...' if len(result['filename']) > 15 else result['filename']
+        fname = result.get('filename', 'Unknown')
+        short_filename = (fname[:15] + '...') if len(fname) > 15 else fname
         data.append([
             short_filename,
-            result['spam_result'],
+            result.get('spam_result', 'ERROR'),
             f"{result.get('confidence_score', 'N/A')}"
         ])
 
@@ -289,9 +263,7 @@ def generate_pdf_report(results, insights):
     table.drawOn(c, 50, y - (20 * len(data)))
     y -= (25 * len(data))
 
-    ## ------------------------- ##
-    ## IP Geolocation Table
-    ## ------------------------- ##
+    # IP Geolocation Table
     y -= 40
     c.setFont("Helvetica-Bold", 14)
     c.drawString(50, y, "■ IP and Geolocation Information:")
@@ -299,8 +271,9 @@ def generate_pdf_report(results, insights):
 
     ip_data = [["Filename", "IP Address", "City", "Country"]]
     for result in results:
-        short_filename = result['filename'][:15] + '...' if len(result['filename']) > 15 else result['filename']
-        for geo in result['geolocation_info']:
+        fname = result.get('filename', 'Unknown')
+        short_filename = (fname[:15] + '...') if len(fname) > 15 else fname
+        for geo in result.get('geolocation_info', []):
             ip_data.append([
                 short_filename,
                 geo.get('ip', 'N/A'),
@@ -321,71 +294,67 @@ def generate_pdf_report(results, insights):
         table.drawOn(c, 50, y - (20 * len(ip_data)))
         y -= (25 * len(ip_data))
 
-    # Bar Chart
+    # Simple bar chart Spam vs Safe
     d = Drawing(400, 200)
     chart = VerticalBarChart()
     chart.x = 50
     chart.y = 30
     chart.height = 150
     chart.width = 300
-    chart.data = [[insights['spam_files_detected'], insights['safe_files_detected']]]
-
+    chart.data = [[insights.get('spam_files_detected', 0), insights.get('safe_files_detected', 0)]]
     chart.categoryAxis.categoryNames = ['Spam', 'Safe']
     chart.valueAxis.valueMin = 0
-    chart.valueAxis.valueMax = max(insights['spam_files_detected'], insights['safe_files_detected'], 1) + 2
+    chart.valueAxis.valueMax = max(insights.get('spam_files_detected', 0),
+                                   insights.get('safe_files_detected', 0), 1) + 2
     chart.valueAxis.valueStep = 1
-
     chart.barWidth = 30
     chart.groupSpacing = 10
     chart.barSpacing = 20
-
-    # Coloring Bars
-    chart.bars[0].fillColor = colors.red   # ✅ correct
-    chart.bars[1].fillColor = colors.green # ✅ correct
-
+    chart.bars[0].fillColor = colors.red
+    chart.bars[1].fillColor = colors.green
     d.add(chart)
 
-    # Check if enough space for chart
     if y < 250:
         c.showPage()
         y = height - margin
 
     renderPDF.draw(d, c, margin, y - 200)
 
-    # Footer
     c.setFont("Helvetica-Oblique", 8)
     c.drawCentredString(width / 2, 30, "Generated by Phishing & Spam Detection System © 2025")
-
-    # Save and Return
     c.save()
     buffer.seek(0)
     return buffer
 
+# -------------------- Safety Stub --------------------
+def detect_phishing_personality(url: str):
+    """
+    Placeholder to avoid NameError from /api/check_url.
+    Implement your real logic here if needed.
+    """
+    # Example: return a simple tag based on keywords
+    if any(k in url for k in ("urgent", "verify", "reset", "security")):
+        return "Urgency Phishing"
+    if any(k in url for k in ("gift", "prize", "reward", "bonus")):
+        return "Reward Phishing"
+    return None
 
-
-# ---------- API ROUTES ----------
-
-
+# -------------------- API ROUTES --------------------
 @app.route('/api/check_url', methods=['POST'])
 def api_check_url():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     url = data.get('url')
     if not url:
         return jsonify({'error': 'No URL provided'}), 400
 
     result = is_phishing_url(url)
-
-    # Personality Detector Part:
-    phishing_type = None
-    if result == 'Phishing':
-        phishing_type = detect_phishing_personality(url)
+    phishing_type = detect_phishing_personality(url) if result == 'Phishing' else None
 
     return jsonify({
         'url': url,
         'result': result,
         'phishing_type': phishing_type
     })
-
 
 @app.route('/api/update_phished_urls', methods=['POST'])
 def api_update_phished_urls():
@@ -397,12 +366,12 @@ def api_update_phished_urls():
 
 @app.route('/api/generate_fake_url', methods=['GET'])
 def api_generate_fake_url():
-    fake_url = "/fake_login"
+    fake_url = generate_fake_url()
     return jsonify({"fake_url": fake_url})
 
 @app.route('/api/record_click', methods=['POST'])
 def api_record_click():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     email_id = data.get('email_id')
     if email_id and email_id not in clicked_emails:
         clicked_emails.append(email_id)
@@ -414,9 +383,6 @@ def api_get_clicked_emails():
 
 @app.route('/fake_login', methods=['GET'])
 def fake_login():
-    """
-    Serve the fake login page.
-    """
     return render_template('fake_login.html')
 
 @app.route('/submit_credentials', methods=['POST'])
@@ -444,14 +410,17 @@ def submit_credentials():
 
     return jsonify({'message': 'Credentials stored successfully'})
 
-
 @app.route('/api/check_spam', methods=['POST'])
 def api_check_spam():
+    # Ensure models are loaded
+    if spam_model is None or vectorizer is None:
+        return jsonify({'error': 'Spam model not available on server.'}), 500
+
     if 'files' not in request.files:
         return jsonify({'error': 'No files uploaded'}), 400
 
     files = request.files.getlist('files')
-    if not files or all(file.filename == '' for file in files):
+    if not files or all(file.filename.strip() == '' for file in files):
         return jsonify({'error': 'No valid files selected'}), 400
 
     results = []
@@ -461,35 +430,34 @@ def api_check_spam():
 
     for file in files:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(file_path)
-
         try:
+            file.save(file_path)
+
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 email_content = f.read()
 
-            email_features = vectorizer.transform([email_content]).toarray()
+            email_features = vectorizer.transform([email_content])
 
             # Predict class and probability
-            prediction = spam_model.predict(email_features)[0]
-            spam_result = "SPAM" if prediction == 1 else "NOT SPAM"
+            pred = spam_model.predict(email_features)[0]
+            spam_result = "SPAM" if int(pred) == 1 else "NOT SPAM"
 
             if hasattr(spam_model, "predict_proba"):
                 probabilities = spam_model.predict_proba(email_features)[0]
-                confidence_score = round(max(probabilities) * 100, 2)  # Highest probability
+                confidence_score = round(float(max(probabilities)) * 100, 2)
             else:
-                confidence_score = None  # If model doesn't support it
+                confidence_score = None
 
             ips = extract_ip_from_email(file_path)
 
-            # Fetch only IPs with valid lat/lon
             geo_results = []
             for ip in ips:
                 geo_info = get_ip_geolocation(ip)
-                if geo_info.get('lat') not in [None, 'Unknown'] and geo_info.get('lon') not in [None, 'Unknown']:
+                # include only items that have coordinates
+                if geo_info.get('lat') is not None and geo_info.get('lon') is not None:
                     geo_info['google_maps_link'] = f"https://www.google.com/maps?q={geo_info['lat']},{geo_info['lon']}"
                     geo_results.append(geo_info)
 
-            # Count results
             total_files += 1
             if spam_result == 'SPAM':
                 spam_count += 1
@@ -505,22 +473,24 @@ def api_check_spam():
             })
 
         except Exception as e:
+            # Always return a consistent shape to avoid frontend crashes
             results.append({
                 'filename': file.filename,
+                'spam_result': 'ERROR',
+                'confidence_score': None,
+                'extracted_ips': [],
+                'geolocation_info': [],
                 'error': str(e)
             })
-
         finally:
-            os.remove(file_path)
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception:
+                pass
 
-    # Calculate accuracy based on classification
-    if total_files > 0:
-        spam_percentage = round((spam_count / total_files) * 100, 2)
-        safe_percentage = round((safe_count / total_files) * 100, 2)
-    else:
-        spam_percentage = 0
-        safe_percentage = 0
-    
+    spam_percentage = round((spam_count / total_files) * 100, 2) if total_files else 0
+    safe_percentage = round((safe_count / total_files) * 100, 2) if total_files else 0
 
     return jsonify({
         'status': 'success',
@@ -536,11 +506,13 @@ def api_check_spam():
 
 @app.route('/api/generate_pdf_report', methods=['POST'])
 def api_generate_pdf_report():
+    if spam_model is None or vectorizer is None:
+        return jsonify({'error': 'Spam model not available on server.'}), 500
+
     if 'files' not in request.files:
         return jsonify({'error': 'No files uploaded'}), 400
 
     files = request.files.getlist('files')
-
     results = []
     total_files = 0
     spam_count = 0
@@ -548,28 +520,27 @@ def api_generate_pdf_report():
 
     for file in files:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(file_path)
-
         try:
+            file.save(file_path)
+
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 email_content = f.read()
 
-            email_features = vectorizer.transform([email_content]).toarray()
+            email_features = vectorizer.transform([email_content])
             prediction = spam_model.predict(email_features)[0]
-            spam_result = "SPAM" if prediction == 1 else "NOT SPAM"
+            spam_result = "SPAM" if int(prediction) == 1 else "NOT SPAM"
 
             if hasattr(spam_model, "predict_proba"):
                 probabilities = spam_model.predict_proba(email_features)[0]
-                confidence_score = round(max(probabilities) * 100, 2)
+                confidence_score = round(float(max(probabilities)) * 100, 2)
             else:
                 confidence_score = None
 
             ips = extract_ip_from_email(file_path)
-
             geo_results = []
             for ip in ips:
                 geo_info = get_ip_geolocation(ip)
-                if geo_info.get('lat') not in [None, 'Unknown'] and geo_info.get('lon') not in [None, 'Unknown']:
+                if geo_info.get('lat') is not None and geo_info.get('lon') is not None:
                     geo_info['google_maps_link'] = f"https://www.google.com/maps?q={geo_info['lat']},{geo_info['lon']}"
                     geo_results.append(geo_info)
 
@@ -590,18 +561,21 @@ def api_generate_pdf_report():
         except Exception as e:
             results.append({
                 'filename': file.filename,
+                'spam_result': 'ERROR',
+                'confidence_score': None,
+                'extracted_ips': [],
+                'geolocation_info': [],
                 'error': str(e)
             })
-
         finally:
-            os.remove(file_path)
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception:
+                pass
 
-    if total_files > 0:
-        spam_percentage = round((spam_count / total_files) * 100, 2)
-        safe_percentage = round((safe_count / total_files) * 100, 2)
-    else:
-        spam_percentage = 0
-        safe_percentage = 0
+    spam_percentage = round((spam_count / total_files) * 100, 2) if total_files else 0
+    safe_percentage = round((safe_count / total_files) * 100, 2) if total_files else 0
 
     insights = {
         'total_files_analyzed': total_files,
@@ -611,21 +585,17 @@ def api_generate_pdf_report():
         'safe_percentage': safe_percentage
     }
 
-    # Now you have both 'results' and 'insights' ready ✅
-
     pdf_report = generate_pdf_report(results, insights)
-
     return send_file(
         pdf_report,
         as_attachment=True,
         download_name='spam_detection_report.pdf',
         mimetype='application/pdf'
     )
-# ---------- END API ROUTES ----------
 
+# -------------------- Main --------------------
 if __name__ == '__main__':
     init_db()
     phishing_urls = fetch_openphish_feed()
     store_phishing_urls(phishing_urls)
     app.run(debug=True)
-    
