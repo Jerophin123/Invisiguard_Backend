@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phishing Detection App</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #fff;
+            background: black;
+        }
+
+        .background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: url("/static/1744.gif") no-repeat center center fixed;
+            background-size: cover;
+            z-index: -1;
+            filter: brightness(0.5); /* Adjust brightness for better contrast */
+        }
+
+        .container {
+            position: relative;
+            z-index: 10;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+            max-width: 350px;
+            width: 100%;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            font-size: 24px;
+            color: #000;
+        }
+
+        input {
+            width: calc(100% - 20px);
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            background: #ff1744;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background: #d50000;
+        }
+
+        .result {
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #000;
+        }
+
+        .footer {
+            margin-top: 30px;
+            font-size: 14px;
+        }
+
+        .footer a {
+            color: #007bff;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="background" id="background"></div>
+
+    <div class="container">
+        <h1>Phishing Detection</h1>
+        <form id="phishingForm">
+            <input type="text" id="url" placeholder="Enter URL to check" required>
+            <button type="submit">Check URL</button>
+        </form>
+        <div class="result" id="result"></div>
+        <div class="footer">
+            <p><a href="/simulation">To know more about me</a></p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('phishingForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+
+            const url = document.getElementById('url').value;
+            const background = document.getElementById('background');
+            const resultDiv = document.getElementById('result');
+
+            const response = await fetch('/check_url', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: new URLSearchParams({ url })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                resultDiv.innerText = 'Error: ' + data.error;
+                resultDiv.style.color = 'red';
+            } else {
+                resultDiv.innerText = 'URL is: ' + data.result;
+                resultDiv.style.color = data.result === 'Phishing' ? 'red' : 'green';
+
+                // Change background GIF based on result
+                if (data.result === 'Phishing') {
+                    background.style.background = "url('/static/phishing.gif') no-repeat center center fixed";
+                    background.style.backgroundSize = "cover";
+                } else {
+                    background.style.background = "url('/static/safe.gif') no-repeat center center fixed";
+                    background.style.backgroundSize = "cover";
+                }
+            }
+        });
+        
+    </script>
+</body>
+</html>
+ <!-- Chatbot UI -->
+<div id="chatbot-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999;">
+    <button id="chatbot-button" style="background-color: red; color: white; border: none; border-radius: 50%; width: 60px; height: 60px; font-size: 24px; cursor: pointer;" onclick="toggleChatbot()">💬</button>
+    <div id="chatbot-window" style="display: none; width: 300px; height: 400px; background: white; border: 1px solid red; border-radius: 10px; box-shadow: 0px 4px 6px rgba(0,0,0,0.2); position: absolute; bottom: 70px; right: 0; z-index: 10000;">
+        <div style="background-color: red; color: white; padding: 10px; text-align: center; border-top-left-radius: 10px; border-top-right-radius: 10px;">
+            <strong>URL Assistant</strong>
+        </div>
+        <div id="chatbot-messages" style="height: 320px; overflow-y: auto; padding: 10px; font-size: 14px;">
+            <p>Welcome! Enter a URL to check if it's safe or fake.</p>
+        </div>
+        <div style="padding: 10px; display: flex;">
+            <input id="chatbot-input" type="text" placeholder="Enter URL..." style="flex: 1; padding: 5px; border: 1px solid #ddd; border-radius: 4px;" />
+            <button onclick="sendToChatbot()" style="background-color: red; color: white; border: none; padding: 5px 10px; margin-left: 5px; border-radius: 4px;">Send</button>
+        </div>
+    </div>
+</div>
+
+<!-- Chatbot UI -->
+<div id="chatbot-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999;">
+    <button id="chatbot-button" style="background-color: red; color: white; border: none; border-radius: 50%; width: 60px; height: 60px; font-size: 24px; cursor: pointer;" onclick="toggleChatbot()">💬</button>
+    <div id="chatbot-window" style="display: none; width: 350px; height: 450px; background: white; border: 1px solid red; border-radius: 10px; box-shadow: 0px 4px 6px rgba(0,0,0,0.2); position: absolute; bottom: 70px; right: 0; z-index: 10000;">
+        <div style="background-color: red; color: white; padding: 10px; text-align: center; border-top-left-radius: 10px; border-top-right-radius: 10px;">
+            <strong>URL Assistant</strong>
+        </div>
+        <div id="chatbot-messages" style="height: 350px; overflow-y: auto; padding: 10px; font-size: 14px; border-bottom: 1px solid #ddd;">
+            <p>Welcome! Enter a URL to check if it's safe or fake.</p>
+        </div>
+        <div style="padding: 10px; display: flex; gap: 10px;">
+            <input id="chatbot-input" type="text" placeholder="Enter URL..." style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" />
+            <button onclick="sendToChatbot()" style="background-color: red; color: white; border: none; padding: 8px 12px; border-radius: 4px;">Send</button>
+        </div>
+    </div>
+</div>
+
+<!-- Chatbot UI -->
+<div id="chatbot-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999;">
+    <button id="chatbot-button" style="background-color: red; color: white; border: none; border-radius: 50%; width: 60px; height: 60px; font-size: 24px; cursor: pointer;" onclick="toggleChatbot()">💬</button>
+    <div id="chatbot-window" style="display: none; width: 350px; height: 450px; background: white; border: 1px solid red; border-radius: 10px; box-shadow: 0px 4px 6px rgba(0,0,0,0.2); position: absolute; bottom: 70px; right: 0; z-index: 10000;">
+        <div style="background-color: red; color: white; padding: 10px; text-align: center; border-top-left-radius: 10px; border-top-right-radius: 10px;">
+            <strong>URL Assistant</strong>
+        </div>
+        <div id="chatbot-messages" style="height: 350px; overflow-y: auto; padding: 10px; font-size: 14px; border-bottom: 1px solid #ddd;">
+            <p>Welcome! Enter a URL to check if it's safe or fake.</p>
+        </div>
+        <div style="padding: 10px; display: flex; gap: 10px;">
+            <input id="chatbot-input" type="text" placeholder="Enter URL..." style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;" />
+            <button onclick="sendToChatbot()" style="background-color: red; color: white; border: none; padding: 8px 12px; border-radius: 4px;">Send</button>
+        </div>
+    </div>
+</div>
+
+<!-- Chatbot UI -->
+<div id="chatbot-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999;">
+    <!-- Chatbot Button -->
+    <button id="chatbot-button" 
+        style="
+            background-color: red; 
+            color: white; 
+            border: none; 
+            border-radius: 50%; 
+            width: 60px; 
+            height: 60px; 
+            font-size: 24px; 
+            cursor: pointer; 
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;">
+        💬
+    </button>
+
+    <!-- Chatbot Window -->
+    <div id="chatbot-window" 
+        style="
+            display: none; 
+            width: 350px; 
+            height: 500px; 
+            background: white; 
+            border: 1px solid red; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); 
+            position: absolute; 
+            bottom: 70px; 
+            right: 0; 
+            z-index: 10000; 
+            overflow: hidden; 
+            font-family: Arial, sans-serif;">
+        <!-- Chatbot Header -->
+        <div style="
+                background-color: red; 
+                color: white; 
+                padding: 15px; 
+                text-align: center; 
+                border-top-left-radius: 10px; 
+                border-top-right-radius: 10px;">
+            <strong>URL Assistant</strong>
+        </div>
+
+        <!-- Chatbot Messages Area -->
+        <div id="chatbot-messages" 
+            style="
+                height: 400px; 
+                overflow-y: auto; 
+                padding: 15px; 
+                font-size: 14px; 
+                border-bottom: 1px solid #ddd;">
+            <p style="color: gray;">Welcome! Enter a URL to check if it's safe or fake.</p>
+        </div>
+
+        <!-- Chatbot Input Area -->
+        <div style="padding: 10px; display: flex; gap: 10px; align-items: center;">
+            <input id="chatbot-input" 
+                type="text" 
+                placeholder="Enter URL..." 
+                style="
+                    flex: 1; 
+                    padding: 10px; 
+                    border: 1px solid #ddd; 
+                    border-radius: 5px; 
+                    font-size: 14px;" />
+            <button onclick="sendToChatbot()" 
+                style="
+                    background-color: red; 
+                    color: white; 
+                    border: none; 
+                    padding: 10px 20px; 
+                    border-radius: 5px; 
+                    font-size: 14px; 
+                    font-weight: bold;">
+                Send
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Chatbot UI -->
+<div id="chatbot-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999;">
+    <!-- Chatbot Button -->
+    <button id="chatbot-button" 
+        style="
+            background-color: red; 
+            color: white; 
+            border: none; 
+            border-radius: 50%; 
+            width: 60px; 
+            height: 60px; 
+            font-size: 24px; 
+            cursor: pointer; 
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;" 
+        onclick="toggleChatbot()">
+        💬
+    </button>
+
+    <!-- Chatbot Window -->
+    <div id="chatbot-window" 
+        style="
+            display: none; 
+            width: 350px; 
+            height: 500px; 
+            background: white; 
+            border: 1px solid red; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); 
+            position: absolute; 
+            bottom: 70px; 
+            right: 0; 
+            z-index: 10000; 
+            overflow: hidden; 
+            font-family: Arial, sans-serif;">
+        <!-- Chatbot Header -->
+        <div style="
+                background-color: red; 
+                color: white; 
+                padding: 15px; 
+                text-align: center; 
+                border-top-left-radius: 10px; 
+                border-top-right-radius: 10px;">
+            <strong>URL Assistant</strong>
+        </div>
+
+        <!-- Chatbot Messages Area -->
+        <div id="chatbot-messages" 
+            style="
+                height: 400px; 
+                overflow-y: auto; 
+                padding: 15px; 
+                font-size: 14px; 
+                border-bottom: 1px solid #ddd;">
+            <p style="color: gray;">Welcome! Enter a URL to check if it's safe or fake.</p>
+        </div>
+
+        <!-- Chatbot Input Area -->
+        <div style="padding: 10px; display: flex; gap: 10px; align-items: center;">
+            <input id="chatbot-input" 
+                type="text" 
+                placeholder="Enter URL..." 
+                style="
+                    flex: 1; 
+                    padding: 10px; 
+                    border: 1px solid #ddd; 
+                    border-radius: 5px; 
+                    font-size: 14px;" />
+            <button onclick="sendToChatbot()" 
+                style="
+                    background-color: red; 
+                    color: white; 
+                    border: none; 
+                    padding: 10px 20px; 
+                    border-radius: 5px; 
+                    font-size: 14px; 
+                    font-weight: bold;">
+                Send
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Chatbot UI -->
+<div id="chatbot-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999;">
+    <!-- Chatbot Button -->
+    <button id="chatbot-button" 
+        style="
+            background-color: red; 
+            color: white; 
+            border: none; 
+            border-radius: 50%; 
+            width: 60px; 
+            height: 60px; 
+            font-size: 24px; 
+            cursor: pointer; 
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;" 
+        onclick="toggleChatbot()">
+        💬
+    </button>
+
+    <!-- Chatbot Window -->
+    <div id="chatbot-window" 
+        style="
+            display: none; 
+            width: 350px; 
+            height: 500px; 
+            background: white; 
+            border: 1px solid red; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); 
+            position: absolute; 
+            bottom: 70px; 
+            right: 0; 
+            z-index: 10000; 
+            overflow: hidden; 
+            font-family: Arial, sans-serif;">
+        <!-- Chatbot Header -->
+        <div style="
+                background-color: red; 
+                color: white; 
+                padding: 15px; 
+                text-align: center; 
+                border-top-left-radius: 10px; 
+                border-top-right-radius: 10px;">
+            <strong>URL Assistant</strong>
+        </div>
+
+        <!-- Chatbot Messages Area -->
+        <div id="chatbot-messages" 
+            style="
+                height: 370px; 
+                overflow-y: auto; 
+                padding: 15px; 
+                font-size: 14px; 
+                border-bottom: 1px solid #ddd;">
+            <p style="color: gray;">Welcome! Enter a URL to check if it's safe or fake.</p>
+        </div>
+
+        <!-- Chatbot Input Area -->
+        <div style="padding: 10px; display: flex; gap: 10px; align-items: center;">
+            <input id="chatbot-input" 
+                type="text" 
+                placeholder="Enter URL..." 
+                style="
+                    flex: 1; 
+                    padding: 10px; 
+                    border: 1px solid #ddd; 
+                    border-radius: 5px; 
+                    font-size: 14px;" />
+            <button onclick="sendToChatbot()" 
+                style="
+                    background-color: red; 
+                    color: white; 
+                    border: none; 
+                    padding: 10px 20px; 
+                    border-radius: 5px; 
+                    font-size: 14px; 
+                    font-weight: bold;">
+                Search
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Toggle the display of the chatbot window
+    function toggleChatbot() {
+        const chatbotWindow = document.getElementById('chatbot-window');
+        if (chatbotWindow.style.display === 'none' || chatbotWindow.style.display === '') {
+            chatbotWindow.style.display = 'block';
+        } else {
+            chatbotWindow.style.display = 'none';
+        }
+    }
+
+    // Function to handle chatbot interactions
+    async function sendToChatbot() {
+        const input = document.getElementById('chatbot-input').value.trim();
+        const messages = document.getElementById('chatbot-messages');
+        if (!input) return;
+
+        // Append user's message
+        const userMessage = document.createElement('div');
+        userMessage.style.color = 'blue';
+        userMessage.style.marginBottom = '10px';
+        userMessage.innerHTML = `<strong>You:</strong> <a href="${input}" target="_blank">${input}</a>`;
+        messages.appendChild(userMessage);
+
+        // Scroll to the bottom
+        messages.scrollTop = messages.scrollHeight;
+
+        // Send URL to the backend
+        try {
+            const response = await fetch('/chatbot_response', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: input })
+            });
+            const data = await response.json();
+
+            // Append bot's response
+            const botMessage = document.createElement('div');
+            botMessage.style.color = 'black';
+            botMessage.style.marginBottom = '10px';
+            botMessage.innerHTML = `<strong>Bot:</strong> ${data.reason}`;
+            messages.appendChild(botMessage);
+
+            // Scroll to the bottom
+            messages.scrollTop = messages.scrollHeight;
+        } catch (error) {
+            console.error('Error:', error);
+        }
+
+        // Clear input field
+        document.getElementById('chatbot-input').value = '';
+    }
+</script>

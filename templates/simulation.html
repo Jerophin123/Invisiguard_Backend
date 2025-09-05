@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phishing Simulation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        button {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            font-size: 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .fake-url {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 18px;
+            color: #ff1744;
+        }
+        .result {
+            margin-top: 20px;
+            font-size: 16px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Phishing Simulation Tool</h1>
+        <p>Generate a fake phishing URL to test the consciousness of workers.</p>
+        <button id="generateUrlButton">Generate Fake URL</button>
+        <div class="fake-url" id="fakeUrl"></div>
+        <div class="result" id="result"></div>
+    </div>
+
+    <script>
+        document.getElementById('generateUrlButton').addEventListener('click', async () => {
+            const response = await fetch('/simulation', { method: 'POST' });
+            const data = await response.json();
+            const fakeUrl = data.fake_url;
+
+            // Display the fake URL
+            const fakeUrlDiv = document.getElementById('fakeUrl');
+            fakeUrlDiv.innerHTML = `Fake URL: <a href="${fakeUrl}" target="_blank">${fakeUrl}</a>`;
+        });
+
+        // Example function to simulate recording a click
+        async function recordClick(email) {
+            const response = await fetch('/record_click', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email_id: email })
+            });
+            const data = await response.json();
+            console.log(data.message);
+        }
+
+        // Simulate recording a click (for testing)
+        // recordClick("worker@example.com");
+    </script>
+</body>
+</html>
