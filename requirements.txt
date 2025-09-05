@@ -1,9 +1,17 @@
-Flask
-gunicorn
-flask-cors
-requests
-scikit-learn
-joblib
-numpy
-pandas
-textblob
+# Web
+Flask==3.0.3
+flask-cors==4.0.0
+gunicorn==23.0.0
+
+# HTTP
+requests==2.32.3
+
+# ML / vectorizer loading
+scikit-learn==1.4.2
+joblib==1.4.2
+numpy==1.26.4
+scipy==1.11.4
+
+# PDF reporting
+reportlab==4.2.2
+Pillow==10.3.0
